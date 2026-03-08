@@ -81,3 +81,14 @@ Logging rules:
 - Result: model ran 2-step episode (run_static_eval → finish), got reward=0.25.
 - Model reasons coherently about the Chess960 task but doesn't attempt code edits yet (expected pre-training baseline).
 - Next: run GRPO training loop to teach the model to edit eval.py and improve match scores.
+
+## 2026-03-07 18:45 PST
+
+- Investigated agent harness options: ACP (Agent Client Protocol), smolagents, SkyRL+OpenEnv, TRL+OpenEnv.
+- ACP is for IDE↔agent communication — doesn't fit RL training loops.
+- Chose TRL's native OpenEnv integration (`rollout_func` + `generate_rollout_completions`) per official docs.
+- Rewrote training script to use TRL's `rollout_func` pattern with multi-turn episodes (like TRL's Wordle example).
+- Key changes: `rollout_func` runs full multi-turn episodes per prompt, collects token-level prompt_ids/completion_ids/logprobs, passes env_reward through kwargs to reward functions.
+- Uses `vllm_mode="colocate"` for single-GPU H100 training.
+- Kept --mode infer for quick Qwen testing, --mode handcrafted for scripted demo.
+- Next: test GRPO training on H100, push to HF Spaces.
