@@ -185,66 +185,6 @@ def run_inference_test(
 # Mode: train — TRL GRPO with OpenEnv rollout_func
 # ---------------------------------------------------------------------------
 
-def _rollout_one_episode(
-    trainer,
-    env: Zero960Client,
-    tokenizer,
-    dataset_prompt: str,
-    max_turns: int = 6,
-) -> dict[str, list]:
-    """Run one multi-turn episode, collecting token-level data for GRPO."""
-    from trl.experimental.openenv import generate_rollout_completions
-
-    result = env.reset()
-    obs = result.observation
-
-    prompt_ids: list = []
-    completion_ids: list = []
-    logprobs: list = []
-    step_rewards: list[float] = []
-
-    for _turn in range(max_turns):
-        if result.done:
-            break
-
-        # Build prompt from current observation
-        msgs = format_messages(obs)
-        prompt_text = tokenizer.apply_chat_template(
-            msgs, tokenize=False, add_generation_prompt=True,
-        )
-
-        # Generate via TRL's vLLM-aware helper
-        rollout_outputs = generate_rollout_completions(trainer, [prompt_text])[0]
-        prompt_ids.extend(rollout_outputs["prompt_ids"])
-        completion_ids.extend(rollout_outputs["completion_ids"])
-        logprobs.extend(rollout_outputs["logprobs"])
-
-        completion_text = rollout_outputs.get("text") or tokenizer.decode(
-            rollout_outputs["completion_ids"], skip_special_tokens=True,
-        )
-
-        # Parse action and step the environment
-        action = parse_llm_output(completion_text)
-        result = env.step(action)
-        obs = result.observation
-        step_rewards.append(float(result.reward or 0.0))
-
-    # If the model didn't finish, force finish to get terminal reward
-    if not result.done:
-        result = env.step(Zero960Action(action_type="finish"))
-        step_rewards.append(float(result.reward or 0.0))
-
-    final_reward = step_rewards[-1] if step_rewards else 0.0
-
-    return {
-        "prompt_ids": prompt_ids,
-        "completion_ids": completion_ids,
-        "logprobs": logprobs,
-        "env_reward": final_reward,
-        "num_turns": len(step_rewards),
-    }
-
-
 def run_grpo_training(
     base_url: str,
     model_name: str = "Qwen/Qwen3.5-9B",
@@ -252,7 +192,12 @@ def run_grpo_training(
     num_generations: int = 4,
     max_turns: int = 6,
 ) -> None:
-    """Run TRL GRPO training with multi-turn OpenEnv rollouts."""
+    """Run TRL GRPO training with environment-based rewards.
+
+    Each GRPO generation produces a completion (the model's proposed action
+    sequence). The reward function runs a full multi-turn episode against
+    the live environment to score it.
+    """
     from datasets import Dataset
     from transformers import AutoTokenizer
     from trl import GRPOConfig, GRPOTrainer
@@ -264,7 +209,7 @@ def run_grpo_training(
     env = Zero960Client(base_url=base_url)
     env.connect()
 
-    # Build dataset of initial prompts
+    # Build dataset: each row is a prompt from a fresh env reset
     def make_dataset(n: int) -> Dataset:
         prompts = []
         for _ in range(n):
@@ -278,39 +223,33 @@ def run_grpo_training(
 
     dataset = make_dataset(num_generations * num_train_steps)
 
-    # Rollout function: runs multi-turn episodes for a batch of prompts
-    def rollout_func(prompts: list[str], trainer: GRPOTrainer) -> dict[str, list]:
-        all_prompt_ids = []
-        all_completion_ids = []
-        all_logprobs = []
-        all_env_rewards = []
+    # Reward function: run multi-turn episode from the model's completion
+    def env_reward_func(completions, **kwargs):
+        """Score each completion by running a full episode in the env."""
+        rewards = []
+        for completion in completions:
+            try:
+                result = env.reset()
+                obs = result.observation
 
-        for prompt in prompts:
-            episode = _rollout_one_episode(
-                trainer=trainer,
-                env=env,
-                tokenizer=tokenizer,
-                dataset_prompt=prompt,
-                max_turns=max_turns,
-            )
-            all_prompt_ids.append(episode["prompt_ids"])
-            all_completion_ids.append(episode["completion_ids"])
-            all_logprobs.append(episode["logprobs"])
-            all_env_rewards.append(episode["env_reward"])
+                # First action from the model's completion
+                action = parse_llm_output(completion)
+                result = env.step(action)
+                obs = result.observation
 
-        return {
-            "prompt_ids": all_prompt_ids,
-            "completion_ids": all_completion_ids,
-            "logprobs": all_logprobs,
-            "env_reward": all_env_rewards,
-        }
+                # If the model wrote code, run a match to get a real score
+                if not result.done and action.action_type == "write_file":
+                    result = env.step(Zero960Action(action_type="run_match"))
+                    obs = result.observation
 
-    # Reward function: extract env_reward passed through rollout_func
-    def reward_from_env(completions, **kwargs):
-        rewards = kwargs.get("env_reward", [])
-        if rewards:
-            return [float(r) for r in rewards]
-        return [0.0] * len(completions)
+                # Finish to get terminal reward
+                if not result.done:
+                    result = env.step(Zero960Action(action_type="finish"))
+
+                rewards.append(float(result.reward or 0.0))
+            except Exception:
+                rewards.append(0.0)
+        return rewards
 
     config = GRPOConfig(
         output_dir="./zero960_grpo_output",
@@ -321,22 +260,19 @@ def run_grpo_training(
         logging_steps=1,
         num_generations=num_generations,
         max_completion_length=1024,
-        use_vllm=True,
-        vllm_mode="colocate",
         report_to="none",
     )
 
     trainer = GRPOTrainer(
         model=model_name,
         processing_class=tokenizer,
-        reward_funcs=[reward_from_env],
+        reward_funcs=[env_reward_func],
         train_dataset=dataset,
         args=config,
-        rollout_func=rollout_func,
     )
 
     print(f"Starting GRPO training: {model_name}")
-    print(f"  steps={num_train_steps}, generations={num_generations}, max_turns={max_turns}")
+    print(f"  steps={num_train_steps}, generations={num_generations}")
     print(f"  env={base_url}")
 
     trainer.train()
