@@ -257,9 +257,22 @@ def run_grpo_training(
         r=16,
         lora_alpha=32,
         lora_dropout=0.05,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        target_modules=[
+            "q_proj", "k_proj", "v_proj", "o_proj",  # full attention
+            "in_proj_qkv", "out_proj",                # linear attention
+            "gate_proj", "up_proj", "down_proj",      # MLP
+        ],
         task_type="CAUSAL_LM",
     )
+
+    model_kwargs = {
+        "quantization_config": __import__("transformers").BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=__import__("torch").bfloat16,
+            bnb_4bit_quant_type="nf4",
+        ),
+        "device_map": "auto",
+    }
 
     config = GRPOConfig(
         output_dir="./zero960_grpo_output",
@@ -273,6 +286,7 @@ def run_grpo_training(
         max_completion_length=1024,
         bf16=True,
         gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
         report_to="none",
     )
 
@@ -283,6 +297,7 @@ def run_grpo_training(
         train_dataset=dataset,
         args=config,
         peft_config=lora_config,
+        model_init_kwargs=model_kwargs,
     )
 
     print(f"Starting GRPO training: {model_name}")
