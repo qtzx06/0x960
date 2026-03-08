@@ -70,3 +70,14 @@ Logging rules:
 - Rewrote `train/minimal_trl_openenv.py` to include both `--mode handcrafted` (quick demo) and `--mode train` (TRL GRPO with Qwen2.5-Coder-0.5B).
 - Verified end-to-end: server starts, `/health` returns OK, handcrafted rollout completes with reward=0.125.
 - Next: make repo public, deploy to HF Spaces, test training script in Colab.
+
+## 2026-03-07 18:30 PST
+
+- Made repo public via `gh repo edit --visibility public`.
+- Set up Northflank H100 (80GB HBM3) instance with PyTorch 2.8.0 + CUDA 12.6.
+- Installed project and all deps on the H100 pod.
+- Ran Qwen 3.5 9B (`Qwen/Qwen3.5-9B`) inference test against live Zero960 env on H100.
+- Model downloaded 19.3GB weights at ~3.3GB/s, loaded in ~7s on H100.
+- Result: model ran 2-step episode (run_static_eval → finish), got reward=0.25.
+- Model reasons coherently about the Chess960 task but doesn't attempt code edits yet (expected pre-training baseline).
+- Next: run GRPO training loop to teach the model to edit eval.py and improve match scores.
