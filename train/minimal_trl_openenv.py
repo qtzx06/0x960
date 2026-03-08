@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from zero960_env.client import Zero960Client
 from zero960_env.models import Zero960Action
@@ -223,32 +226,79 @@ def run_grpo_training(
 
     dataset = make_dataset(num_generations * num_train_steps)
 
+    # Observability: log every completion + action + reward to JSONL
+    log_dir = Path("./zero960_logs")
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"rollouts_{int(time.time())}.jsonl"
+    step_counter = {"n": 0}
+
+    def _log_entry(entry: dict) -> None:
+        with open(log_path, "a") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+
     # Reward function: run multi-turn episode from the model's completion
     def env_reward_func(completions, **kwargs):
         """Score each completion by running a full episode in the env."""
         rewards = []
-        for completion in completions:
+        step_counter["n"] += 1
+        step_n = step_counter["n"]
+
+        for i, completion in enumerate(completions):
+            t0 = time.time()
+            entry = {
+                "step": step_n,
+                "gen": i,
+                "completion_preview": completion[:500],
+                "completion_len": len(completion),
+            }
             try:
                 result = env.reset()
                 obs = result.observation
 
                 # First action from the model's completion
                 action = parse_llm_output(completion)
+                entry["parsed_action"] = action.action_type
+                entry["parsed_path"] = action.path
+                if action.action_type == "write_file" and action.content:
+                    entry["code_preview"] = action.content[:300]
+                    entry["code_len"] = len(action.content)
+
                 result = env.step(action)
                 obs = result.observation
+                entry["env_status_1"] = obs.status_message
 
                 # If the model wrote code, run a match to get a real score
                 if not result.done and action.action_type == "write_file":
                     result = env.step(Zero960Action(action_type="run_match"))
                     obs = result.observation
+                    entry["match_score"] = obs.last_match_score
 
                 # Finish to get terminal reward
                 if not result.done:
                     result = env.step(Zero960Action(action_type="finish"))
 
-                rewards.append(float(result.reward or 0.0))
-            except Exception:
+                reward = float(result.reward or 0.0)
+                rewards.append(reward)
+                entry["reward"] = reward
+            except Exception as exc:
                 rewards.append(0.0)
+                entry["reward"] = 0.0
+                entry["error"] = str(exc)
+
+            entry["elapsed_s"] = round(time.time() - t0, 2)
+            _log_entry(entry)
+
+            # Print compact summary to stdout
+            act = entry.get("parsed_action", "?")
+            rew = entry["reward"]
+            elapsed = entry["elapsed_s"]
+            code_info = ""
+            if act == "write_file":
+                code_info = f" [{entry.get('code_len', 0)}b]"
+            print(f"  [{step_n}.{i}] {act}{code_info} → reward={rew:.3f} ({elapsed:.1f}s)")
+
+        avg = sum(rewards) / len(rewards) if rewards else 0
+        print(f"  step {step_n} avg_reward={avg:.3f}")
         return rewards
 
     from peft import LoraConfig
@@ -288,7 +338,7 @@ def run_grpo_training(
         learning_rate=5e-6,
         logging_steps=1,
         num_generations=num_generations,
-        max_completion_length=1024,
+        max_completion_length=512,
         bf16=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
@@ -312,6 +362,21 @@ def run_grpo_training(
 
     trainer.save_model("./zero960_grpo_final")
     print("Training complete. Model saved to ./zero960_grpo_final")
+    print(f"Rollout logs: {log_path}")
+
+    # Print summary stats from logs
+    action_counts: dict[str, int] = {}
+    reward_by_action: dict[str, list[float]] = {}
+    with open(log_path) as f:
+        for line in f:
+            entry = json.loads(line)
+            act = entry.get("parsed_action", "unknown")
+            action_counts[act] = action_counts.get(act, 0) + 1
+            reward_by_action.setdefault(act, []).append(entry.get("reward", 0))
+    print("\n=== Training Summary ===")
+    for act, count in sorted(action_counts.items(), key=lambda x: -x[1]):
+        avg_r = sum(reward_by_action[act]) / len(reward_by_action[act])
+        print(f"  {act}: {count}x, avg_reward={avg_r:.3f}")
 
     env.close()
 
