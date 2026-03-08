@@ -1,8 +1,8 @@
 ---
-title: 0x960
-emoji: ♟️
+title: "0x960"
+emoji: "♟️"
 colorFrom: indigo
-colorTo: slate
+colorTo: gray
 sdk: docker
 app_port: 8000
 pinned: false
