@@ -92,3 +92,14 @@ Logging rules:
 - Uses `vllm_mode="colocate"` for single-GPU H100 training.
 - Kept --mode infer for quick Qwen testing, --mode handcrafted for scripted demo.
 - Next: test GRPO training on H100, push to HF Spaces.
+
+## 2026-03-07 19:00 PST
+
+- Full-parameter GRPO OOMed on 80GB H100 (9B model = ~18GB weights + ~36GB optimizer + gradients).
+- Switched to QLoRA: 4-bit quantization (NF4 via BitsAndBytes) + LoRA r=16 on attention + MLP projections.
+- 4-bit model loads at ~8GB, leaving plenty of room for LoRA adapters and optimizer states.
+- Discovered Qwen3.5 is a hybrid architecture (ConditionalGeneration, not CausalLM): has both `self_attn` (full attention, 1/4 layers) and `linear_attn` (gated delta, 3/4 layers) + `partial_rotary_factor=0.25`.
+- Initial LoRA attempt hit a shape mismatch in `apply_rotary_pos_emb` during gradient checkpointing — fixed by using `use_reentrant=False` and QLoRA.
+- Also hit vLLM 0.17 vs transformers 5.3 incompatibility (vLLM wants <5.0). Dropped vLLM for now, using native HF generation.
+- Training running on Northflank H100 with QLoRA + gradient checkpointing.
+- Next: confirm training completes, check reward progression, update docs.
