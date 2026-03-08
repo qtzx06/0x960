@@ -88,9 +88,76 @@ def _parse_llm_output(text: str) -> Zero960Action:
     return Zero960Action(action_type="finish")
 
 
+def run_inference_test(
+    base_url: str,
+    model_name: str = "Qwen/Qwen3.5-9B",
+    max_episode_steps: int = 6,
+) -> RolloutSummary:
+    """Run a single episode with Qwen generating actions against the live env."""
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    print(f"Loading {model_name}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype="auto",
+        device_map="auto",
+    )
+
+    with Zero960Client(base_url=base_url) as client:
+        result = client.reset()
+        obs = result.observation
+
+        for step_i in range(max_episode_steps):
+            if result.done:
+                break
+
+            msgs = _format_observation_as_messages(obs)
+            prompt = tokenizer.apply_chat_template(
+                msgs, tokenize=False, add_generation_prompt=True
+            )
+            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=1024,
+                temperature=0.7,
+                top_p=0.9,
+                do_sample=True,
+            )
+            generated = tokenizer.decode(
+                outputs[0][inputs["input_ids"].shape[1]:],
+                skip_special_tokens=True,
+            )
+
+            print(f"\n--- Step {step_i + 1} ---")
+            print(f"LLM output: {generated[:200]}...")
+
+            action = _parse_llm_output(generated)
+            print(f"Parsed action: {action.action_type}", end="")
+            if action.path:
+                print(f" path={action.path}", end="")
+            print()
+
+            result = client.step(action)
+            obs = result.observation
+            print(f"Status: {obs.status_message}")
+
+        if not result.done:
+            result = client.step(Zero960Action(action_type="finish"))
+            obs = result.observation
+
+    summary = RolloutSummary(
+        reward=result.reward or 0.0,
+        steps=len(obs.history),
+        final_status=obs.status_message,
+    )
+    print(f"\nFinal: reward={summary.reward}, steps={summary.steps}")
+    return summary
+
+
 def run_grpo_training(
     base_url: str,
-    model_name: str = "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+    model_name: str = "Qwen/Qwen3.5-9B",
     num_train_steps: int = 20,
     episodes_per_step: int = 4,
 ) -> None:
@@ -172,18 +239,30 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="0x960 training / rollout script.")
     parser.add_argument(
         "--mode",
-        choices=["handcrafted", "train"],
+        choices=["handcrafted", "infer", "train"],
         default="handcrafted",
-        help="handcrafted = quick demo rollout, train = TRL GRPO training",
+        help="handcrafted = quick demo, infer = Qwen inference test, train = TRL GRPO",
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-0.5B-Instruct")
+    parser.add_argument("--model", default="Qwen/Qwen3.5-9B")
     parser.add_argument("--steps", type=int, default=20)
     parser.add_argument("--episodes-per-step", type=int, default=4)
     args = parser.parse_args()
 
     if args.mode == "handcrafted":
         summary = run_handcrafted_rollout(base_url=args.base_url)
+        print(
+            {
+                "reward": summary.reward,
+                "steps": summary.steps,
+                "final_status": summary.final_status,
+            }
+        )
+    elif args.mode == "infer":
+        summary = run_inference_test(
+            base_url=args.base_url,
+            model_name=args.model,
+        )
         print(
             {
                 "reward": summary.reward,
