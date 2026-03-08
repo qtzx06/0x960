@@ -57,3 +57,16 @@ Logging rules:
 - Added `docs/why_chess960.md` for judge-facing motivation and `docs/demo-script.md` for the one-minute video.
 - Tightened the claim to focus on robustness and self-improvement under distribution shift, not on overclaiming "understanding."
 - Next: keep this process log updated as implementation, HF Spaces wiring, and training work continue.
+
+## 2026-03-07 18:15 PST
+
+- Fixed OpenEnv API integration to match actual `openenv-core` 0.2.1 signatures.
+- Changed PyPI dependency from `openenv>=0.2.1` to `openenv-core[core]>=0.2.1` (correct package name).
+- Models now extend `openenv.core.env_server.types.Action` and `Observation` base classes instead of plain `BaseModel`.
+- Fixed `create_app()` kwargs: `env_class` → `env`, `action_type` → `action_cls`, `observation_type` → `observation_cls`.
+- Updated `Environment` to use 3 type params `[Act, Obs, State]` and corrected `reset`/`step` signatures with `seed`, `episode_id`, `timeout_s` params.
+- Replaced `HTTPEnvClient` with WebSocket-based `EnvClient`; implemented `_step_payload`, `_parse_result`, `_parse_state` abstract methods.
+- Added `openenv.yaml` manifest and `Dockerfile` for HF Spaces deployment.
+- Rewrote `train/minimal_trl_openenv.py` to include both `--mode handcrafted` (quick demo) and `--mode train` (TRL GRPO with Qwen2.5-Coder-0.5B).
+- Verified end-to-end: server starts, `/health` returns OK, handcrafted rollout completes with reward=0.125.
+- Next: make repo public, deploy to HF Spaces, test training script in Colab.

@@ -1,0 +1,6 @@
+spec_version: 1
+name: zero960
+type: space
+runtime: fastapi
+app: zero960_env.server.app:app
+port: 8000
