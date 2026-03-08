@@ -1,0 +1,9 @@
+this is 0x960, a bounded self-improvement environment for chess960 engine engineering.
+
+the policy does not predict moves directly. it edits eval.py, runs matches, and is rewarded only when engine strength improves.
+
+we measured +596.5 internal elo vs baseline and +221.1 elo over a stockfish-1320 anchor.
+
+behavior quality also shifted from degenerate action loops to reliable write_file, run_match, finish execution.
+
+the full stack combines teacher distillation, student sft, grpo refinement, and autonomous swarm-based engine search.
