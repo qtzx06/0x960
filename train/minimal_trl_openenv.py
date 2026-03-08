@@ -251,15 +251,28 @@ def run_grpo_training(
                 rewards.append(0.0)
         return rewards
 
+    from peft import LoraConfig
+
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        task_type="CAUSAL_LM",
+    )
+
     config = GRPOConfig(
         output_dir="./zero960_grpo_output",
         num_train_epochs=1,
         max_steps=num_train_steps,
-        per_device_train_batch_size=num_generations,
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=num_generations,
         learning_rate=5e-6,
         logging_steps=1,
         num_generations=num_generations,
         max_completion_length=1024,
+        bf16=True,
+        gradient_checkpointing=True,
         report_to="none",
     )
 
@@ -269,6 +282,7 @@ def run_grpo_training(
         reward_funcs=[env_reward_func],
         train_dataset=dataset,
         args=config,
+        peft_config=lora_config,
     )
 
     print(f"Starting GRPO training: {model_name}")
