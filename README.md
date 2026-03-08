@@ -1,3 +1,13 @@
+---
+title: 0x960
+emoji: ♟️
+colorFrom: indigo
+colorTo: slate
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # 0x960
 
 0x960 is an OpenEnv environment where a model improves a minimal Chess960 engine by editing a bounded `eval.py` file and getting rewarded by match outcomes.
