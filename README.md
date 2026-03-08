@@ -144,7 +144,7 @@ Invalid writes are rolled back instantly. The reward comes from actual match out
 
 ### 1. Policy Learning (Teacher → Student → RL)
 
-The agent learns *how* to engineer. Teacher distillation solves the cold-start problem, SFT teaches the workflow, and GRPO optimizes for real match reward.
+The agent learns *how* to engineer. Teacher distillation solves the cold-start problem, SFT teaches the workflow, and GRPO optimizes for real match reward. We trained both **Qwen 3.5-0.8B** (distilled student) and **Qwen 3.5-9B** (QLoRA GRPO scaling probe on H100) — the 0.8B student proved that even a tiny model can learn the full engineering workflow when properly bootstrapped, while the 9B experiments validated that the environment and reward design scale to larger models.
 
 ### 2. Codex Swarm (Autonomous Engine Search)
 
