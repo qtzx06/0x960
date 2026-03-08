@@ -25,6 +25,26 @@ This ordering is deliberate. The main failure mode so far has not been raw model
 
 There is also a complementary outer-loop path: use multiple local Codex workers to iterate directly on the engine, benchmark every patch, keep only Elo-positive changes, and then distill the best traces back into an open student. See [Codex Swarm Plan](docs/codex-swarm-plan.md).
 
+## GRPO + OpenEnv Training Notes
+
+We ran a Hugging Face TRL GRPO setup over a bounded OpenEnv coding environment rather than a plain text-only reward model. The policy was not optimizing free-form completions in the abstract; it was optimizing structured multi-step tool use over a Chess960 engine-editing task.
+
+Concretely, the agent observed the current `eval.py`, recent action history, remaining budget, and match feedback, then emitted bounded actions like `write_file`, `run_match`, and `finish`. Reward was downstream and environment-grounded: real engine outcomes plus shaping around valid edits, meaningful test cycles, and clean episode completion. The RL objective was therefore closer to long-horizon workflow optimization than standard single-turn preference tuning.
+
+The key lesson from the GRPO runs was that raw RL was not the bottleneck solver by itself because base policies had weak action priors. Small and mid-size base models often failed to discover the core edit loop and instead collapsed into degenerate actions like repeated evaluation calls or premature `finish`.
+
+So the training strategy evolved into a teacher-student stack:
+
+1. collect successful bounded-action trajectories from a stronger coding teacher,
+2. SFT/distill a smaller open student onto that workflow,
+3. apply GRPO as a refinement stage.
+
+In NLP terms, GRPO became the policy-improvement phase on top of a behaviorally competent initialization, not the mechanism for discovering the task ontology from scratch.
+
+Implementation-wise, the stack uses Hugging Face `transformers` + `trl` GRPO with Qwen 3.5-family models on the student side, including `Qwen/Qwen3.5-0.8B` for the distilled student path and earlier larger-Qwen GRPO experiments as scaling probes. The training entrypoint is one TRL/OpenEnv script with handcrafted, infer, and train modes, so the same environment contract is reused for debugging, rollout inspection, and RL.
+
+We also added heavy observability: rollout logs, parsed action traces, code previews, match scores, and per-step summaries. That made it possible to diagnose the real failure mode: not “reward too low” in the abstract, but “policy never meaningfully edits code, so GRPO is optimizing noise around a bad exploration frontier.”
+
 ## Repo Layout
 
 - `src/zero960/`: engine, workspace, and episode runtime
