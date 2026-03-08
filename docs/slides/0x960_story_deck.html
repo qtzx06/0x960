@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>0x960 story deck</title>
+  <link rel="stylesheet" href="assets/0x960_story_deck.css" />
+</head>
+<body>
+  <main class="deck">
+    <header class="deck-header" id="top">
+      <h1>0x960 — self-improving chess960 engine with openenv</h1>
+      <p>static story deck • local-first • keyboard navigation: <span class="kbd">←</span>/<span class="kbd">→</span> or <span class="kbd">j</span>/<span class="kbd">k</span></p>
+      <nav class="toc" aria-label="slide links">
+        <a href="#slide-1">1</a><a href="#slide-2">2</a><a href="#slide-3">3</a><a href="#slide-4">4</a>
+        <a href="#slide-5">5</a><a href="#slide-6">6</a><a href="#slide-7">7</a><a href="#slide-8">8</a>
+        <a href="#slide-9">9</a><a href="#slide-10">10</a><a href="#slide-11">11</a><a href="#slide-12">12</a>
+        <a href="#slide-13">13</a>
+      </nav>
+    </header>
+
+    <section class="slide" id="slide-1">
+      <h2>slide 1 — 0x960: self-improving chess960 engine with openenv</h2>
+      <ul>
+        <li>0x960 is an AI system that engineers stronger chess engines, not just better text outputs.</li>
+        <li>the agent operates inside a bounded OpenEnv episode with verifiable tool actions.</li>
+        <li>reward is grounded in downstream match performance on held-out chess960 starts.</li>
+        <li>stack: OpenEnv 0.2.1 + TRL/GRPO + Qwen students + GPT teacher + Codex swarm.</li>
+      </ul>
+      <p class="note">this is an engineering system with measurable outcomes, not a prompt toy.</p>
+    </section>
+
+    <section class="slide" id="slide-2">
+      <h2>slide 2 — who i am + why this problem</h2>
+      <ul>
+        <li>i’m joshua lin (<code>qtzx06</code>), data science + math-cs at uc san diego.</li>
+        <li>i build systems at the intersection of LLM agents, infra, and verifiable evaluation.</li>
+        <li>thesis: self-improvement only matters if the loop is constrained, testable, and hard to game.</li>
+        <li>0x960 operationalizes that thesis end-to-end.</li>
+      </ul>
+    </section>
+
+    <section class="slide" id="slide-3">
+      <h2>slide 3 — problem framing: rl for tool-use usually fails at action discovery</h2>
+      <ul>
+        <li>base models in this environment often never discover <code>write_file → run_match → finish</code>.</li>
+        <li>naive RL optimizes degenerate behavior (eval spam, early finish) instead of useful edits.</li>
+        <li>text proxy rewards miss the real objective: stronger engine behavior under match play.</li>
+        <li>exploration, reward, and validation must all live in the same environment.</li>
+      </ul>
+    </section>
+
+    <section class="slide" id="slide-4">
+      <h2>slide 4 — why chess960 (not classical chess)</h2>
+      <ul>
+        <li>chess960 removes opening-book memorization and forces broader positional generalization.</li>
+        <li>randomized starts reduce reward hacking through rote move sequences.</li>
+        <li>benchmark outcomes better reflect true evaluation + search quality under distribution shift.</li>
+        <li>this is a stronger substrate for self-improving agents.</li>
+      </ul>
+      <p class="note">reference: <code>docs/why_chess960.md</code></p>
+    </section>
+
+    <section class="slide" id="slide-5">
+      <h2>slide 5 — bounded openenv setup (the contract)</h2>
+      <ul>
+        <li>per episode, the policy gets a constrained workspace and 5 actions: <code>read_file</code>, <code>write_file</code>, <code>run_static_eval</code>, <code>run_match</code>, <code>finish</code>.</li>
+        <li>invalid writes are rolled back; reward is tied to executable engine outcomes.</li>
+        <li>observation includes code state, action history, and remaining budget.</li>
+        <li>this creates a tight, auditable optimization loop for agent behavior.</li>
+      </ul>
+      <p class="note">references: <code>docs/architecture.md</code>, <code>openenv.yaml</code>, <code>src/zero960_env/server/app.py</code></p>
+    </section>
+
+    <section class="slide" id="slide-6">
+      <h2>slide 6 — training pipeline: teacher → sft → grpo</h2>
+      <ul>
+        <li>teacher (gpt-5.4) generates successful bounded-action trajectories.</li>
+        <li>student sft (<code>Qwen/Qwen3.5-0.8B</code>) distills workflow competence from those traces.</li>
+        <li>grpo refines policy quality once the agent has a viable action prior.</li>
+        <li>key insight: sft solved the bottleneck; RL becomes useful after behavior bootstrap.</li>
+      </ul>
+      <p class="note">references: <code>docs/training.md</code>, <code>train/codex_distill.py</code>, <code>train/sft_student.py</code>, <code>train/minimal_trl_openenv.py</code></p>
+    </section>
+
+    <section class="slide" id="slide-7">
+      <h2>slide 7 — codex swarm: autonomous outer-loop engine search</h2>
+      <ul>
+        <li>multiple codex workers propose bounded patches to eval/search surfaces.</li>
+        <li>coordinator enforces staged screening and promotion gates on held-out positions.</li>
+        <li>only benchmark-positive candidates become new champions; regressions are discarded.</li>
+        <li>continuous engine-level self-improvement runs in parallel with policy learning.</li>
+      </ul>
+      <p class="note">references: <code>docs/codex-swarm-plan.md</code>, <code>train/codex_swarm.py</code>, <code>outputs/codex_swarm/</code></p>
+    </section>
+
+    <section class="slide" id="slide-8">
+      <h2>slide 8 — key results metrics (behavior + strength)</h2>
+      <ul>
+        <li>training reward: <strong>-2.1 → +1.0</strong> (base qwen 0.8b to sft student).</li>
+        <li>sft metrics: train loss <strong>0.2072</strong>, eval loss <strong>0.04192</strong>, token acc <strong>98.76%</strong>.</li>
+        <li>engine strength: <strong>+596.5 elo</strong> internal gain vs baseline search stack.</li>
+        <li>anchor gain: <strong>+221.1 elo</strong> vs stockfish 1320; local strength near ~1600.</li>
+        <li>swarm throughput: 4 promoted champions across 9+ rounds / 50+ evaluated patches.</li>
+      </ul>
+      <div class="media-grid">
+        <figure><img src="../../media/submission/0x960_elo_trajectory_v2.png" alt="elo trajectory" /><figcaption>internal elo trajectory</figcaption></figure>
+        <figure><img src="../../media/submission/0x960_anchor_positioning_v2.png" alt="anchor positioning" /><figcaption>anchor positioning vs stockfish levels</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-9">
+      <h2>slide 9 — visuals (proof over claims)</h2>
+      <div class="media-grid">
+        <figure><img src="../../figures/fig_compound_uplift.png" alt="compound uplift" /><figcaption>compound uplift</figcaption></figure>
+        <figure><img src="../../figures/fig_reward_regime_shift.png" alt="reward regime shift" /><figcaption>reward regime shift</figcaption></figure>
+        <figure><img src="../../figures/fig_anchor_positioning.png" alt="anchor positioning" /><figcaption>anchor positioning</figcaption></figure>
+        <figure><img src="../../figures/fig_behavior_quality_shift.png" alt="behavior quality shift" /><figcaption>behavior quality shift</figcaption></figure>
+        <figure><img src="../../figures/fig_execution_velocity.png" alt="execution velocity" /><figcaption>execution velocity</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-10">
+      <h2>slide 10 — demo flow (live and deterministic)</h2>
+      <ul>
+        <li>start server + show bounded action schema in one episode trace.</li>
+        <li>run live match demo clip to show engine behavior under chess960 starts.</li>
+        <li>show progression artifacts and anchor comparison outputs.</li>
+        <li>close with swarm promotion ledger to demonstrate autonomous improvement cycle.</li>
+      </ul>
+      <div class="media-grid">
+        <figure>
+          <video controls preload="metadata" src="../../media/submission/0x960-demo-62s.mp4"></video>
+          <figcaption>0x960 demo (62s)</figcaption>
+        </figure>
+        <figure><img src="../../media/submission/live_demo/frames/frame_0202.png" alt="live demo frame" /><figcaption>live demo frame snapshot</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-11">
+      <h2>slide 11 — architecture + loop diagrams</h2>
+      <ul>
+        <li>policy/environment loop diagram: see <code>docs/diagrams/mermaid.md</code> (system architecture).</li>
+        <li>training pipeline: teacher rollouts → sft dataset → student → grpo.</li>
+        <li>champion/challenger loop: candidate patch → screen → benchmark → promote/reject.</li>
+        <li>all loops are measurable, bounded, and composable.</li>
+      </ul>
+      <div class="media-grid">
+        <figure><img src="../../media/submission/0x960_behavior_shift_v2.png" alt="behavior shift" /><figcaption>behavior shift summary</figcaption></figure>
+        <figure><img src="../../media/submission/0x960_score_progression.png" alt="score progression" /><figcaption>score progression artifacts</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-12">
+      <h2>slide 12 — roadmap (next 30 / 60 / 90)</h2>
+      <ul>
+        <li><strong>30 days:</strong> scale teacher trace coverage + diversify chess960 position sets.</li>
+        <li><strong>60 days:</strong> stabilize grpo refinement on top of sft students with stronger eval harness.</li>
+        <li><strong>90 days:</strong> distill best swarm champions back into policy training corpus for closed-loop compounding.</li>
+        <li><strong>productization:</strong> harden reproducible dashboards and hosted demo endpoints.</li>
+      </ul>
+    </section>
+
+    <section class="slide" id="slide-13">
+      <h2>slide 13 — links + call to action</h2>
+      <ul class="links-list">
+        <li>github: <a href="https://github.com/&lt;org-or-user&gt;/0x960" target="_blank" rel="noreferrer">https://github.com/&lt;org-or-user&gt;/0x960</a> <em>(replace with canonical repo url)</em></li>
+        <li>hugging face space: <a href="https://huggingface.co/spaces/&lt;org-or-user&gt;/0x960" target="_blank" rel="noreferrer">https://huggingface.co/spaces/&lt;org-or-user&gt;/0x960</a> <em>(replace when deployed)</em></li>
+        <li>colab notebook: <a href="https://colab.research.google.com/" target="_blank" rel="noreferrer">https://colab.research.google.com/...</a> <em>(add reproducible run notebook url)</em></li>
+        <li>paper: <a href="#" onclick="return false;">placeholder — no paper published yet (add arxiv link when ready)</a></li>
+      </ul>
+      <p class="note">call to action: collaborate on benchmark packs, stronger teachers, and fully autonomous self-improvement rounds.</p>
+      <p class="note"><a href="#top">back to top</a></p>
+    </section>
+
+    <nav class="nav" aria-label="deck navigation">
+      <button class="nav-btn" id="prevBtn" type="button">← prev</button>
+      <button class="nav-btn" id="nextBtn" type="button">next →</button>
+    </nav>
+  </main>
+
+  <script>
+    (() => {
+      const slides = [...document.querySelectorAll('.slide')];
+      let current = 0;
+
+      const updateFromHash = () => {
+        const idx = slides.findIndex(s => '#' + s.id === window.location.hash);
+        if (idx >= 0) current = idx;
+      };
+
+      const go = (idx) => {
+        current = Math.max(0, Math.min(slides.length - 1, idx));
+        const target = slides[current];
+        history.replaceState(null, '', '#' + target.id);
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+
+      document.getElementById('prevBtn').addEventListener('click', () => go(current - 1));
+      document.getElementById('nextBtn').addEventListener('click', () => go(current + 1));
+
+      document.addEventListener('keydown', (e) => {
+        if (['ArrowRight', 'PageDown', 'j'].includes(e.key)) go(current + 1);
+        if (['ArrowLeft', 'PageUp', 'k'].includes(e.key)) go(current - 1);
+      });
+
+      window.addEventListener('hashchange', updateFromHash);
+      updateFromHash();
+    })();
+  </script>
+</body>
+</html>
