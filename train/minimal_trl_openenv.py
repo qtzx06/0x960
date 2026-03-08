@@ -265,14 +265,19 @@ def run_grpo_training(
         task_type="CAUSAL_LM",
     )
 
-    model_kwargs = {
-        "quantization_config": __import__("transformers").BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=__import__("torch").bfloat16,
-            bnb_4bit_quant_type="nf4",
-        ),
-        "device_map": "auto",
-    }
+    import torch
+    from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_quant_type="nf4",
+    )
+    print(f"Loading {model_name} in 4-bit...")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name, quantization_config=bnb_config, device_map="auto",
+    )
+    print(f"Model loaded. GPU mem: {torch.cuda.memory_allocated() / 1e9:.1f} GB")
 
     config = GRPOConfig(
         output_dir="./zero960_grpo_output",
@@ -291,13 +296,12 @@ def run_grpo_training(
     )
 
     trainer = GRPOTrainer(
-        model=model_name,
+        model=model,
         processing_class=tokenizer,
         reward_funcs=[env_reward_func],
         train_dataset=dataset,
         args=config,
         peft_config=lora_config,
-        model_init_kwargs=model_kwargs,
     )
 
     print(f"Starting GRPO training: {model_name}")
