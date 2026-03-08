@@ -1,4 +1,4 @@
-# why chess960
+# Why Chess960
 
 ## short version
 
@@ -23,7 +23,7 @@ We should claim something narrower and more defensible:
 - strong standard-chess performance does not automatically transfer
 - this makes Chess960 a good downstream benchmark for a tool-using self-improvement environment
 
-## relation to the project
+## Relation to 0x960
 
 0x960 is not a move-prediction benchmark. The model does not play moves directly as its primary task.
 

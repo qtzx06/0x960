@@ -23,6 +23,10 @@ class RuntimeObservation:
     remaining_steps: int
     last_match_score: float | None
     invalid_edit_count: int
+    workflow_hint: str
+    suggested_actions: list[str]
+    has_valid_edit: bool
+    has_run_match: bool
     reward: float | None = None
     done: bool = False
 
@@ -33,4 +37,3 @@ class RuntimeStepResult:
     reward: float | None
     done: bool
     info: dict[str, Any] = field(default_factory=dict)
-

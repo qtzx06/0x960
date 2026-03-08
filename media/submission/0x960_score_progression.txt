@@ -1,0 +1,4 @@
+Champion score progression (all attempts)
+points=9
+min=0.4305
+max=0.7219

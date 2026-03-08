@@ -5,6 +5,8 @@ __pycache__/
 build/
 dist/
 outputs/
+zero960_logs/
+zero960_grpo_output/
+zero960_grpo_final/
 *.egg-info/
 *.pyc
-

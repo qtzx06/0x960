@@ -1,188 +1,71 @@
-# architecture
+# Architecture
 
-## stack decisions
+## Core Shape
 
-These are fixed by the hackathon or by scope discipline:
+0x960 has four moving parts:
 
-- environment interface: OpenEnv `0.2.1`
-- deployment target: HF Spaces
-- training demo: HF TRL or Unsloth in Colab
-- core model class: open-weight OSS model only
-- optional infra for real training: Northflank H100
+1. `src/zero960/engine/`
+   A minimal Chess960 engine with fixed search and one narrow editable surface: `eval.py`.
+2. `src/zero960/runtime/`
+   The episode runtime that owns workspace resets, bounded actions, reward shaping, and match scoring.
+3. `src/zero960_env/`
+   The OpenEnv wrapper and WebSocket client/server layer.
+4. `train/`
+   Distillation and RL entrypoints that operate on the same bounded action schema.
 
-Closed frontier models are not part of the core training path. If we use them at all, they are comparison-only in the demo layer.
+## Action Space
 
-## system shape
+The policy only gets structured actions:
 
-The system should have four layers.
+- `read_file`
+- `write_file`
+- `run_static_eval`
+- `run_match`
+- `finish`
 
-### 1. engine workspace
+The full repo is not editable. The policy can only modify `eval.py` inside a fresh workspace.
 
-A minimal Chess960 engine scaffold with:
+## Observation Shape
 
-- fixed move generation
-- fixed search implementation
-- fixed tournament runner
-- one narrow editable surface
-
-Recommended editable surface:
-
-- `engine/eval.py`
-
-Optional later extension:
-
-- `engine/weights.json`
-
-The whole repo should not be editable by the policy. Narrow edit scope keeps training stable and makes the story legible.
-
-### 2. environment runtime
-
-The environment owns the full episode lifecycle:
-
-1. clone a fresh engine workspace
-2. sample one Chess960 start or a small suite of starts
-3. expose bounded actions to the model
-4. execute actions and return observations
-5. after the step budget is exhausted, run matches
-6. compute reward and terminate
-
-The environment should be written as a normal Python runtime first, then wrapped cleanly for OpenEnv.
-
-### 3. reward and evaluation harness
-
-This layer runs fast matches between the edited engine and baselines.
-
-It should provide:
-
-- training reward matches
-- held-out evaluation matches
-- crash handling
-- reproducible position sampling
-
-### 4. training loop
-
-The training loop should use:
-
-- GRPO or equivalent in TRL/Unsloth
-- a rollout function that runs a full episode
-- checkpoint logging
-- reward curves and crash-rate metrics
-
-The training loop is minimal by design. The goal is to show the environment can produce a learnable signal, not to max out Elo during the hackathon.
-
-## episode contract
-
-### observation
-
-Each step should return a compact structured observation containing:
+Each observation includes:
 
 - the task instruction
-- current editable file contents
+- the current `eval.py` contents
 - recent action history
-- recent command outputs or error messages
-- remaining step budget
-- start-position metadata
+- remaining steps
+- last match score
+- workflow hints and suggested next actions
 
-### actions
+The current file contents are already visible in the observation, so the intended high-reward loop is:
 
-Start with structured actions, not open shell access.
+`write_file -> run_match -> finish`
 
-- `read_file(path)`
-- `write_file(path, content)`
-- `run_static_eval()`
-- `run_match()`
-- `finish()`
+## Reward Design
 
-If needed, a restricted shell tool can be added later, but it should not be required for MVP.
+Reward is match-score-based with explicit shaping around the edit loop:
 
-### termination
+- positive signal for valid changed writes
+- positive signal for explicit `run_match` after a write
+- penalties for repeated `run_static_eval`, redundant `read_file`, and finishing without a meaningful edit/test cycle
+- invalid writes are rolled back immediately
 
-An episode ends when:
+This keeps the environment learnable while still grounding the main score in downstream engine strength.
 
-- the agent calls `finish()`
-- the step budget is exhausted
-- the workspace becomes invalid in a fatal way
+## Training Strategy
 
-## reward design
+Current order of operations:
 
-Default reward for MVP:
+1. teacher distillation
+   Use a strong coding model such as Codex/GPT-5.4 to generate successful bounded-action trajectories.
+2. student fine-tuning
+   Fine-tune a smaller open model on those trajectories.
+3. RL refinement
+   Use GRPO or a similar method only after the student already knows the workflow.
 
-- primary reward: match score against a fixed baseline engine
-- penalty: invalid edit, crash, or timeout
+This is the main shift from the earlier RL-first plan. The hard part has been action discovery, not just optimization.
 
-Recommended first-pass formula:
+## Deployment
 
-`reward = score_vs_fixed_baseline - crash_penalty`
-
-Do not make parent-checkpoint self-play the only reward. If we use it, it should be a secondary signal only.
-
-## evaluation protocol
-
-Training and evaluation must be separated.
-
-### training
-
-- sample Chess960 starts from a training pool
-- play a small number of fast games against the fixed baseline
-- compute reward
-
-### held-out eval
-
-- separate fixed start-position suite
-- fixed baseline configuration
-- fixed game count and time control
-- run periodically on saved checkpoints
-
-This is how we avoid fooling ourselves with a rising training reward that does not correspond to stronger engines.
-
-## model strategy
-
-We should optimize for stable tool behavior, not for the largest model possible.
-
-Recommended order:
-
-1. `Qwen3.5-9B`
-2. one backup model with good coding/tool-use behavior
-3. only try larger models if the smaller path is already stable
-
-Single-H100-safe priority:
-
-- dense 7B to 14B class models first
-- larger MoE models only if integration is already working
-
-## speed target
-
-A good MVP episode should be cheap enough to run many times.
-
-Target envelope:
-
-- step budget: `4-8` actions
-- match count: very small during training
-- episode runtime: ideally under `30s`
-
-If episodes are too slow, we reduce game count before we add complexity elsewhere.
-
-## deployment
-
-### HF Spaces
-
-HF Spaces hosts the OpenEnv environment and provides the submission artifact judges can inspect.
-
-### Colab
-
-Colab provides the minimal public training notebook using TRL or Unsloth.
-
-### Northflank
-
-Northflank is the practical training box if we want a real H100-backed run, but it is not required for the minimal architecture itself.
-
-## deferred work
-
-These are explicitly outside the MVP:
-
-- frontier model integrations
-- OAuth-based coding agent sessions
-- multi-agent swarm variants
-- Elo dashboards
-- tournament leagues across many checkpoints
-- full ACP-like unrestricted workspace tooling
+- HF Spaces: public OpenEnv artifact
+- Northflank H100: practical heavy training and debugging box
+- local dev: fastest loop for environment and prompt iteration

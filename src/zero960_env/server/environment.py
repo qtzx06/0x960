@@ -35,6 +35,10 @@ class Zero960Environment(Environment[Zero960Action, Zero960Observation, State]):
             remaining_steps=observation.remaining_steps,
             last_match_score=observation.last_match_score,
             invalid_edit_count=observation.invalid_edit_count,
+            workflow_hint=observation.workflow_hint,
+            suggested_actions=observation.suggested_actions,
+            has_valid_edit=observation.has_valid_edit,
+            has_run_match=observation.has_run_match,
         )
 
     def step(
@@ -61,6 +65,10 @@ class Zero960Environment(Environment[Zero960Action, Zero960Observation, State]):
             remaining_steps=obs.remaining_steps,
             last_match_score=obs.last_match_score,
             invalid_edit_count=obs.invalid_edit_count,
+            workflow_hint=obs.workflow_hint,
+            suggested_actions=obs.suggested_actions,
+            has_valid_edit=obs.has_valid_edit,
+            has_run_match=obs.has_run_match,
             reward=obs.reward,
             done=obs.done,
         )

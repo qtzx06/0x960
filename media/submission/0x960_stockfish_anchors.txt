@@ -1,0 +1,3 @@
+Stockfish anchor bars
+anchors=2
+elo range=1320-1600

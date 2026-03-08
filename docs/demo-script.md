@@ -1,31 +1,31 @@
-# one-minute demo script
+# Demo Script
 
-## 30-second version
+## 30-Second Version
 
-We built 0x960, an OpenEnv environment where a model learns to be a Chess960 engine engineer, not a chess player. Chess960 is useful because it removes much of the opening memorization that standard chess systems can rely on, making it a stronger test of generalization. In our environment, the model gets a bounded coding workspace, edits the engine's eval function, runs checks, and is rewarded by whether the edited engine actually performs better against a fixed baseline. The training signal comes from real downstream engine strength, not just text imitation or next-move prediction.
+0x960 is an OpenEnv environment where a model learns to act like a Chess960 engine engineer, not a chess player. The model gets a bounded coding workspace, edits `eval.py`, tests the change with fast matches, and is rewarded by whether the engine actually improves. We found that raw RL alone struggled because base models did not discover the edit loop, so the current path is teacher distillation first and RL refinement second.
 
-## full one-minute outline
+## One-Minute Outline
 
-### 1. opening
+### 1. Opening
 
-0x960 is an OpenEnv environment for training models to improve a Chess960 engine through bounded code edits.
+0x960 is a bounded self-improvement environment for a minimal Chess960 engine.
 
-### 2. why this task
+### 2. Why Chess960
 
-Chess960 keeps the rules of chess the same but randomizes the starting position, so it is a cleaner test of robustness than standard chess alone.
+Chess960 keeps the rules of chess fixed while changing the starting position, so it is a cleaner robustness test than standard chess alone.
 
-### 3. what the model does
+### 3. What the Agent Does
 
-The model does not play chess directly. It reads engine files, edits `eval.py`, runs checks, and decides when to finish.
+The policy sees the current `eval.py`, writes a bounded replacement, runs a match, and decides when to finish.
 
-### 4. reward
+### 4. Why Teacher Distillation
 
-After the edit budget is used, the engine plays fast matches against a fixed baseline. Reward is based on match score, with penalties for invalid edits or crashes.
+Base models were not discovering `write_file` reliably, so we added a teacher path: collect successful bounded-action trajectories from a stronger coding agent, fine-tune a smaller open model on those traces, then use RL to refine it.
 
-### 5. why OpenEnv
+### 5. Why OpenEnv
 
-This is a real multi-step tool-use task with files, commands, failures, and downstream evaluation. That makes it a strong fit for Statement 3.1 and Statement 4.
+This is a real multi-step tool-use task with code edits, failures, and downstream evaluation. The reward comes from engine strength, not proxy text metrics.
 
-### 6. close
+### 6. Close
 
-The result is a self-improvement environment where the model learns to engineer a stronger Chess960 system, not just imitate chess moves.
+The result is a self-improvement environment where the model learns a real engineering workflow instead of just outputting moves or text.

@@ -21,3 +21,7 @@ class Zero960Observation(Observation):
     remaining_steps: int = 0
     last_match_score: float | None = None
     invalid_edit_count: int = 0
+    workflow_hint: str = ""
+    suggested_actions: list[str] = Field(default_factory=list)
+    has_valid_edit: bool = False
+    has_run_match: bool = False

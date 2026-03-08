@@ -1,0 +1,5 @@
+Accepted samples:
+round_20260308T063558Z_1: 0.6172 (yes)
+round_20260308T070827Z_1: 0.5859 (yes)
+round_20260308T091220Z_1: 0.5781 (yes)
+round_20260308T111412Z_1: 0.6875 (yes)
