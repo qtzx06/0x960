@@ -44,3 +44,5 @@ This repo currently contains a thin but functional skeleton:
 
 - `docs/why_chess960.md`: short research framing for judges and README reuse
 - `docs/demo-script.md`: one-minute demo outline
+- `docs/process.md`: chronological build log for demo storytelling and judging
+- `docs/agent-log-instruction.md`: reusable instruction snippet for coding agents
